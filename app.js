@@ -6,13 +6,7 @@ const DB = {
   init() {
     if (!localStorage.getItem('salesstock_initialized')) {
       this.set('users', [{ id: 1, username: 'admin', password: 'admin123', role: 'ADMIN', created: new Date().toISOString() }]);
-      this.set('products', [
-        { id: 1, name: 'Taladro Inalámbrico', price: 89.99, stock: 15, minStock: 5, barcode: 'S1700000001', created: new Date().toISOString() },
-        { id: 2, name: 'Destornillador Phillips', price: 12.50, stock: 50, minStock: 10, barcode: 'S1700000002', created: new Date().toISOString() },
-        { id: 3, name: 'Sierra Circular', price: 145.00, stock: 3, minStock: 5, barcode: 'S1700000003', created: new Date().toISOString() },
-        { id: 4, name: 'Martillo de Guerra', price: 25.00, stock: 20, minStock: 8, barcode: 'S1700000004', created: new Date().toISOString() },
-        { id: 5, name: 'Alicate Universal', price: 18.75, stock: 8, minStock: 10, barcode: 'S1700000005', created: new Date().toISOString() }
-      ]);
+      this.set('products', []);
       this.set('sales', []);
       localStorage.setItem('salesstock_initialized', 'true');
     }

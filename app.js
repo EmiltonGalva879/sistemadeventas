@@ -6,7 +6,13 @@ const DB = {
   init() {
     if (!localStorage.getItem('salesstock_initialized')) {
       this.set('users', [{ id: 1, username: 'admin', password: 'admin123', role: 'ADMIN', created: new Date().toISOString() }]);
-      this.set('products', []);
+      this.set('products', [
+        { id: 1, name: 'Taladro Inalámbrico', price: 89.99, stock: 15, minStock: 5, barcode: 'S1700000001', created: new Date().toISOString() },
+        { id: 2, name: 'Destornillador Phillips', price: 12.50, stock: 50, minStock: 10, barcode: 'S1700000002', created: new Date().toISOString() },
+        { id: 3, name: 'Sierra Circular', price: 145.00, stock: 3, minStock: 5, barcode: 'S1700000003', created: new Date().toISOString() },
+        { id: 4, name: 'Martillo de Guerra', price: 25.00, stock: 20, minStock: 8, barcode: 'S1700000004', created: new Date().toISOString() },
+        { id: 5, name: 'Alicate Universal', price: 18.75, stock: 8, minStock: 10, barcode: 'S1700000005', created: new Date().toISOString() }
+      ]);
       this.set('sales', []);
       localStorage.setItem('salesstock_initialized', 'true');
     }
@@ -240,65 +246,66 @@ function makeQuote() {
 }
 
 function generateQuoteInvoice(quote) {
-  const doc = new jsPDF({ unit: 'mm', format: [80, 200] });
-  let y = 2;
+  const itemCount = quote.items.length;
+  const baseHeight = 80;
+  const perItemHeight = 7;
+  const footerHeight = 30;
+  const totalHeight = baseHeight + (itemCount * perItemHeight) + footerHeight;
   
-  doc.setFontSize(10);
-  doc.text('================================================', 40, y, { align: 'center' });
-  y += 4;
-  doc.setFontSize(14);
+  const doc = new jsPDF({ unit: 'mm', format: [80, totalHeight] });
+  let y = 5;
+  
+  // Header
+  doc.setFontSize(12);
   doc.text(localStorage.getItem('salesstock_bizname') || 'SALESSTOCK PRO', 40, y, { align: 'center' });
   y += 4;
   doc.setFontSize(10);
   doc.text('COTIZACION', 40, y, { align: 'center' });
-  y += 5;
-  doc.setFontSize(9);
-  y += 5;
-  doc.setFontSize(9);
-  doc.text('================================================', 40, y, { align: 'center' });
   y += 4;
-  doc.text('COTIZACION #: ' + quote.id, 40, y, { align: 'center' });
-  y += 4;
+  doc.setFontSize(8);
+  doc.text('COT #: ' + quote.id, 40, y, { align: 'center' });
+  y += 3;
   doc.text(new Date(quote.created).toLocaleDateString('es-ES'), 40, y, { align: 'center' });
   y += 3;
   doc.text('Vendedor: ' + quote.user, 40, y, { align: 'center' });
-  y += 5;
-  doc.text('================================================', 40, y, { align: 'center' });
   y += 4;
+  doc.text('--------------------------------', 40, y, { align: 'center' });
+  y += 3;
   
-  doc.setFontSize(8);
+  // Items
+  doc.setFontSize(7);
   quote.items.forEach(item => {
-    const nome = item.name.substring(0, 15);
-    const cant = item.quantity;
-    const prec = '$' + item.price.toFixed(2);
-    const subt = '$' + item.subtotal.toFixed(2);
+    const nome = item.name.substring(0, 12);
+    const cant = item.quantity.toString();
+    const pu = '$' + item.price.toFixed(2);
+    const tot = '$' + item.subtotal.toFixed(2);
     doc.text(nome, 5, y);
-    doc.text(cant.toString(), 45, y);
-    doc.text(prec, 58, y);
-    doc.text(subt, 70, y);
+    doc.text(cant, 35, y);
+    doc.text(pu, 48, y);
+    doc.text(tot, 62, y);
     y += 4;
   });
   
+  y += 2;
+  doc.text('--------------------------------', 40, y, { align: 'center' });
   y += 3;
-  doc.text('================================================', 40, y, { align: 'center' });
+  
+  // Total
+  doc.setFontSize(10);
+  doc.text('TOTAL: $' + quote.total.toFixed(2), 60, y, { align: 'right' });
   y += 5;
-  doc.setFontSize(12);
-  doc.text('TOTAL: $' + quote.total.toFixed(2), 40, y, { align: 'center' });
-  y += 5;
-  doc.setFontSize(9);
-  doc.text('================================================', 40, y, { align: 'center' });
-  y += 4;
-  doc.text('Esta cotizacion no es una venta', 40, y, { align: 'center' });
-  y += 3;
-  doc.text('Validez: 7 dias', 40, y, { align: 'center' });
+  
+  // Footer
+  doc.setFontSize(8);
+  doc.text('No es venta - Validez: 7 dias', 40, y, { align: 'center' });
   
   doc.save('cotizacion-' + quote.id + '.pdf');
   
-  // Print dialog
   if (localStorage.getItem('salesstock_print') !== 'auto') {
     setTimeout(() => window.print(), 500);
   }
 }
+
 
 function openCashDrawer() {
   // Try to open cash drawer via USB
@@ -324,92 +331,88 @@ function openCashDrawer() {
 }
 
 function generateInvoice(sale) {
-  const doc = new jsPDF({ unit: 'mm', format: [80, 200] });
-  let y = 2;
+  // Calcular altura dinámica basada en cantidad de productos
+  const itemCount = sale.items.length;
+  const baseHeight = 80; // altura mínima
+  const perItemHeight = 7; // mm por producto
+  const footerHeight = 30; // espacio para total y mensajes
+  const totalHeight = baseHeight + (itemCount * perItemHeight) + footerHeight;
   
-  doc.setFontSize(10);
-  doc.text('================================================', 40, y, { align: 'center' });
-  y += 4;
-  doc.setFontSize(14);
+  const doc = new jsPDF({ unit: 'mm', format: [80, totalHeight] });
+  let y = 5;
+  
+  // Header compacto
+  doc.setFontSize(12);
   doc.text(localStorage.getItem('salesstock_bizname') || 'SALESSTOCK PRO', 40, y, { align: 'center' });
-  y += 5;
-  doc.setFontSize(9);
-  doc.text('================================================', 40, y, { align: 'center' });
   y += 4;
-  doc.text('FACTURA DE VENTA #: ' + sale.id, 40, y, { align: 'center' });
-  y += 4;
-  doc.text(new Date(sale.created).toLocaleDateString('es-ES'), 40, y, { align: 'center' });
+  doc.setFontSize(8);
+  doc.text('FACTURA #: ' + sale.id, 40, y, { align: 'center' });
   y += 3;
-  doc.text('Hora: ' + new Date(sale.created).toLocaleTimeString('es-ES'), 40, y, { align: 'center' });
+  doc.text(new Date(sale.created).toLocaleDateString('es-ES') + ' ' + new Date(sale.created).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }), 40, y, { align: 'center' });
   y += 3;
   doc.text('Cajero: ' + sale.user, 40, y, { align: 'center' });
-  y += 5;
-  doc.text('================================================', 40, y, { align: 'center' });
   y += 4;
+  doc.text('--------------------------------', 40, y, { align: 'center' });
+  y += 3;
   
-  doc.setFontSize(8);
-  doc.text('ARTICULO', 5, y);
-  doc.text('CANT', 45, y);
-  doc.text('PRECIO', 58, y);
-  doc.text('SUBTOTAL', 70, y);
-  y += 4;
+  // Items - compacto
+  doc.setFontSize(7);
+  doc.text('Prod', 5, y);
+  doc.text('Cant', 35, y);
+  doc.text('P.U.', 48, y);
+  doc.text('Total', 62, y);
+  y += 3;
   
   sale.items.forEach(item => {
-    const nome = item.name.substring(0, 15);
-    const cant = item.quantity;
-    const prec = '$' + item.price.toFixed(2);
-    const subt = '$' + item.subtotal.toFixed(2);
+    const nome = item.name.substring(0, 12);
+    const cant = item.quantity.toString();
+    const pu = '$' + item.price.toFixed(2);
+    const tot = '$' + item.subtotal.toFixed(2);
     doc.text(nome, 5, y);
-    doc.text(cant.toString(), 45, y);
-    doc.text(prec, 58, y);
-    doc.text(subt, 70, y);
+    doc.text(cant, 35, y);
+    doc.text(pu, 48, y);
+    doc.text(tot, 62, y);
     y += 4;
   });
   
+  y += 2;
+  doc.text('--------------------------------', 40, y, { align: 'center' });
   y += 3;
-  doc.text('================================================', 40, y, { align: 'center' });
-  y += 5;
-  doc.setFontSize(12);
+  
+  // Total
+  doc.setFontSize(10);
   if (sale.paymentType === 'credito') {
-    doc.text('Subtotal: $' + sale.subtotal.toFixed(2), 40, y, { align: 'center' });
-    y += 4;
-    doc.text('Interes 5%: $' + sale.interest.toFixed(2), 40, y, { align: 'center' });
-    y += 4;
+    doc.text('Sub: $' + sale.subtotal.toFixed(2), 60, y, { align: 'right' });
+    y += 3;
+    doc.text('Int(5%): $' + sale.interest.toFixed(2), 60, y, { align: 'right' });
+    y += 3;
   }
-  doc.text('TOTAL: $' + sale.total.toFixed(2), 40, y, { align: 'center' });
-  y += 5;
-  doc.setFontSize(9);
-  doc.text('================================================', 40, y, { align: 'center' });
+  doc.text('TOTAL: $' + sale.total.toFixed(2), 60, y, { align: 'right' });
   y += 4;
-  doc.text('GRACIAS POR SU COMPRA', 40, y, { align: 'center' });
-  y += 3;
-  doc.text('VUELVA PRONTO', 40, y, { align: 'center' });
+  
+  // Mensaje final
+  doc.setFontSize(8);
   if (sale.paymentType === 'credito') {
-    y += 5;
-    doc.setFontSize(8);
     doc.text('*** PAGO A CREDITO ***', 40, y, { align: 'center' });
     y += 3;
     doc.text('Se cobrara 5% extra en 30 dias', 40, y, { align: 'center' });
+  } else {
+    doc.text('GRACIAS', 40, y, { align: 'center' });
   }
-  
-  // Print configuration
-  const printConfig = localStorage.getItem('salesstock_print') || 'ask'; // 'auto' or 'ask'
   
   // Save as PDF
   doc.save('venta-' + sale.id + '.pdf');
   
   // Print based on configuration
+  const printConfig = localStorage.getItem('salesstock_print') || 'ask';
   if (printConfig === 'auto') {
-    // Try auto-print using jsPDF
     try {
       doc.autoPrint();
       window.open(doc.output('bloburl'), '_blank');
     } catch(e) {
-      // Fallback to print dialog
       setTimeout(() => window.print(), 500);
     }
   } else {
-    // Always ask (show dialog)
     setTimeout(() => window.print(), 500);
   }
 }
@@ -694,19 +697,71 @@ function addProdById(id) {
   render();
 }
 
+function findProduct(query) {
+  const products = DB.get('products');
+  const q = query.toLowerCase().trim();
+  if (!q) return null;
+  
+  // 1. Búsqueda EXACTA por código de barras
+  let product = products.find(p => p.barcode === query);
+  if (product) return product;
+  
+  // 2. Búsqueda PARCIAL por código de barras
+  product = products.find(p => p.barcode && p.barcode.toLowerCase().includes(q));
+  if (product) return product;
+  
+  // 3. Búsqueda por nombre (parcial, sin distinción de mayúsculas)
+  product = products.find(p => p.name.toLowerCase().includes(q));
+  if (product) return product;
+  
+  return null;
+}
+
 function scanBarcode(code) {
   code = code.trim();
   if (!code) return;
-  const products = DB.get('products');
-  const product = products.find(p => p.barcode === code && p.stock > 0);
+  
+  const product = findProduct(code);
+  
   if (product) {
     addToCart(product);
   } else {
     alert('Producto no encontrado: ' + code);
   }
   render();
-  setTimeout(function() { var inp = document.getElementById('scanner-input'); if(inp) { inp.value = ''; inp.focus(); } }, 100);
+  setTimeout(function() { 
+    var inp = document.getElementById('scanner-input'); 
+    if(inp) { inp.value = ''; inp.focus(); } 
+  }, 100);
 }
+
+function scanProductBarcode(code) {
+  code = code.trim();
+  if (!code) return;
+  
+  const product = findProduct(code);
+  
+  if (product) {
+    if (product.stock > 0) {
+      addToCart(product);
+      alert('Agregado: ' + product.name + ' - ' + fmtMoney(product.price));
+    } else {
+      alert('Sin stock: ' + product.name);
+    }
+  } else {
+    // Abrir modal para agregar producto con código pre-llenado
+    state.modal = { type: 'quickAddProduct', barcode: code };
+    render();
+  }
+  render();
+  setTimeout(function() { 
+    var inp = document.getElementById('scanner-prod'); 
+    if(inp) { inp.value = ''; inp.focus(); } 
+  }, 100);
+}
+  render();
+  setTimeout(function() { var inp = document.getElementById('scanner-input'); if(inp) { inp.value = ''; inp.focus(); } }, 100);
+
 
 function scanProductBarcode(code) {
   code = code.trim();
@@ -960,7 +1015,7 @@ function renderModal() {
         <div class="modal" onclick="event.stopPropagation()" style="max-width:500px">
           <div class="modal-header">
             <h2 class="modal-title">Escáner de Código</h2>
-            <button class="btn btn-secondary" onclick="stopCameraScan();state.modal=null;render()">✕</button>
+            <button class="btn btn-secondary" onclick="event.stopPropagation();stopCameraScan();state.modal=null;render()">✕</button>
           </div>
           <div class="modal-body" style="text-align:center">
             <p style="margin-bottom:15px;color:#64748b">Apunta el código de barras o QR con la cámara</p>
@@ -1019,5 +1074,66 @@ function exportPDF() {
   doc.text('Total: $' + total.toFixed(2), 105, y, { align: 'center' });
   doc.save('reporte-' + new Date().toISOString().split('T')[0] + '.pdf');
 }
+
+// Exponer al window para que el HTML pueda acceder
+window.state = state;
+window.logout = logout;
+window.isDirty = false;
+
+// Marcar changes cuando el carrito cambia
+const originalAddToCart = addToCart;
+addToCart = function(product) {
+  originalAddToCart(product);
+  window.isDirty = true;
+};
+
+const originalUpdateCartQty = updateCartQty;
+updateCartQty = function(id, qty) {
+  originalUpdateCartQty(id, qty);
+  window.isDirty = true;
+};
+
+const originalRemoveFromCart = removeFromCart;
+removeFromCart = function(id) {
+  originalRemoveFromCart(id);
+  window.isDirty = true;
+};
+
+const originalCancelCart = cancelCart;
+cancelCart = function() {
+  originalCancelCart();
+  window.isDirty = false;
+};
+
+const originalCompleteSale = completeSale;
+completeSale = function(paymentType) {
+  originalCompleteSale(paymentType);
+  window.isDirty = false;
+};
+
+const originalMakeQuote = makeQuote;
+makeQuote = function() {
+  originalMakeQuote();
+  window.isDirty = false;
+};
+
+const originalLogout = logout;
+logout = function() {
+  if (window.isDirty && state.cart.length > 0) {
+    if (!confirm('⚠️ Tienes ' + state.cart.length + ' producto(s) en el carrito.\n\n¿Seguro que quieres cerrar sesión? Se perderán los productos del carrito.')) {
+      return;
+    }
+  }
+  originalLogout();
+};
+
+// Confirmar antes de recargar/cerrar pestaña
+window.addEventListener('beforeunload', (e) => {
+  if (window.isDirty && state.cart && state.cart.length > 0) {
+    e.preventDefault();
+    e.returnValue = 'Tienes productos en el carrito. ¿Seguro que quieres salir?';
+    return 'Tienes productos en el carrito. ¿Seguro que quieres salir?';
+  }
+});
 
 render();

@@ -150,16 +150,37 @@ function cancelCart() {
   render();
 }
 
-function showPaymentOptions() {
+function showPaymentOptions(mode) {
   const total = getCartTotal();
   state.modal = {
     type: 'payment',
-    total: total
+    total: total,
+    paymentMode: mode || 'sale'
   };
   render();
 }
 
-function completeSale(paymentType) {
+let printWindow = null;
+
+function submitSale(paymentType) {
+  const customerName = document.getElementById('customer-name')?.value || '';
+  const customerPhone = document.getElementById('customer-phone')?.value || '';
+  const notes = document.getElementById('sale-notes')?.value || '';
+  state.modal = null;
+  printWindow = window.open('', '_blank', 'width=800,height=600');
+  completeSale(paymentType, { customerName, customerPhone, notes });
+}
+
+function submitQuote() {
+  const customerName = document.getElementById('customer-name')?.value || '';
+  const customerPhone = document.getElementById('customer-phone')?.value || '';
+  const notes = document.getElementById('sale-notes')?.value || '';
+  state.modal = null;
+  printWindow = window.open('', '_blank', 'width=800,height=600');
+  makeQuote({ customerName, customerPhone, notes });
+}
+
+function completeSale(paymentType, customerData) {
   if (state.cart.length === 0) return;
   const modoPago = paymentType || 'contado';
   const isCredit = modoPago === 'credito';
@@ -175,6 +196,9 @@ function completeSale(paymentType) {
     interest: interest,
     paymentType: modoPago,
     user: state.user.username,
+    customerName: customerData.customerName || '',
+    customerPhone: customerData.customerPhone || '',
+    notes: customerData.notes || '',
     created: new Date().toISOString()
   };
   const products = DB.get('products');
@@ -225,18 +249,16 @@ function stopCameraScan() {
   state.modal = null;
 }
 
-function stopCameraScan() {
-  const html5QrCode = new Html5Qrcode("camera-reader");
-  html5QrCode.stop();
-}
-
-function makeQuote() {
+function makeQuote(customerData) {
   if (state.cart.length === 0) return;
   const quote = {
     id: 'COT-' + Date.now(),
     items: state.cart.map(i => ({ id: i.id, name: i.name, barcode: i.barcode, quantity: i.quantity, price: i.price, subtotal: i.price * i.quantity })),
     total: getCartTotal(),
     user: state.user.username,
+    customerName: customerData.customerName || '',
+    customerPhone: customerData.customerPhone || '',
+    notes: customerData.notes || '',
     created: new Date().toISOString()
   };
   generateQuoteInvoice(quote);
@@ -244,68 +266,6 @@ function makeQuote() {
   render();
   alert('Cotización generada: ' + quote.id);
 }
-
-function generateQuoteInvoice(quote) {
-  const itemCount = quote.items.length;
-  const baseHeight = 80;
-  const perItemHeight = 7;
-  const footerHeight = 30;
-  const totalHeight = baseHeight + (itemCount * perItemHeight) + footerHeight;
-  
-  const doc = new jsPDF({ unit: 'mm', format: [80, totalHeight] });
-  let y = 5;
-  
-  // Header
-  doc.setFontSize(12);
-  doc.text(localStorage.getItem('salesstock_bizname') || 'SALESSTOCK PRO', 40, y, { align: 'center' });
-  y += 4;
-  doc.setFontSize(10);
-  doc.text('COTIZACION', 40, y, { align: 'center' });
-  y += 4;
-  doc.setFontSize(8);
-  doc.text('COT #: ' + quote.id, 40, y, { align: 'center' });
-  y += 3;
-  doc.text(new Date(quote.created).toLocaleDateString('es-ES'), 40, y, { align: 'center' });
-  y += 3;
-  doc.text('Vendedor: ' + quote.user, 40, y, { align: 'center' });
-  y += 4;
-  doc.text('--------------------------------', 40, y, { align: 'center' });
-  y += 3;
-  
-  // Items
-  doc.setFontSize(7);
-  quote.items.forEach(item => {
-    const nome = item.name.substring(0, 12);
-    const cant = item.quantity.toString();
-    const pu = '$' + item.price.toFixed(2);
-    const tot = '$' + item.subtotal.toFixed(2);
-    doc.text(nome, 5, y);
-    doc.text(cant, 35, y);
-    doc.text(pu, 48, y);
-    doc.text(tot, 62, y);
-    y += 4;
-  });
-  
-  y += 2;
-  doc.text('--------------------------------', 40, y, { align: 'center' });
-  y += 3;
-  
-  // Total
-  doc.setFontSize(10);
-  doc.text('TOTAL: $' + quote.total.toFixed(2), 60, y, { align: 'right' });
-  y += 5;
-  
-  // Footer
-  doc.setFontSize(8);
-  doc.text('No es venta - Validez: 7 dias', 40, y, { align: 'center' });
-  
-  doc.save('cotizacion-' + quote.id + '.pdf');
-  
-  if (localStorage.getItem('salesstock_print') !== 'auto') {
-    setTimeout(() => window.print(), 500);
-  }
-}
-
 
 function openCashDrawer() {
   // Try to open cash drawer via USB
@@ -327,93 +287,6 @@ function openCashDrawer() {
     } catch(e) {
       console.log('Cash drawer: cannot trigger');
     }
-  }
-}
-
-function generateInvoice(sale) {
-  // Calcular altura dinámica basada en cantidad de productos
-  const itemCount = sale.items.length;
-  const baseHeight = 80; // altura mínima
-  const perItemHeight = 7; // mm por producto
-  const footerHeight = 30; // espacio para total y mensajes
-  const totalHeight = baseHeight + (itemCount * perItemHeight) + footerHeight;
-  
-  const doc = new jsPDF({ unit: 'mm', format: [80, totalHeight] });
-  let y = 5;
-  
-  // Header compacto
-  doc.setFontSize(12);
-  doc.text(localStorage.getItem('salesstock_bizname') || 'SALESSTOCK PRO', 40, y, { align: 'center' });
-  y += 4;
-  doc.setFontSize(8);
-  doc.text('FACTURA #: ' + sale.id, 40, y, { align: 'center' });
-  y += 3;
-  doc.text(new Date(sale.created).toLocaleDateString('es-ES') + ' ' + new Date(sale.created).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }), 40, y, { align: 'center' });
-  y += 3;
-  doc.text('Cajero: ' + sale.user, 40, y, { align: 'center' });
-  y += 4;
-  doc.text('--------------------------------', 40, y, { align: 'center' });
-  y += 3;
-  
-  // Items - compacto
-  doc.setFontSize(7);
-  doc.text('Prod', 5, y);
-  doc.text('Cant', 35, y);
-  doc.text('P.U.', 48, y);
-  doc.text('Total', 62, y);
-  y += 3;
-  
-  sale.items.forEach(item => {
-    const nome = item.name.substring(0, 12);
-    const cant = item.quantity.toString();
-    const pu = '$' + item.price.toFixed(2);
-    const tot = '$' + item.subtotal.toFixed(2);
-    doc.text(nome, 5, y);
-    doc.text(cant, 35, y);
-    doc.text(pu, 48, y);
-    doc.text(tot, 62, y);
-    y += 4;
-  });
-  
-  y += 2;
-  doc.text('--------------------------------', 40, y, { align: 'center' });
-  y += 3;
-  
-  // Total
-  doc.setFontSize(10);
-  if (sale.paymentType === 'credito') {
-    doc.text('Sub: $' + sale.subtotal.toFixed(2), 60, y, { align: 'right' });
-    y += 3;
-    doc.text('Int(5%): $' + sale.interest.toFixed(2), 60, y, { align: 'right' });
-    y += 3;
-  }
-  doc.text('TOTAL: $' + sale.total.toFixed(2), 60, y, { align: 'right' });
-  y += 4;
-  
-  // Mensaje final
-  doc.setFontSize(8);
-  if (sale.paymentType === 'credito') {
-    doc.text('*** PAGO A CREDITO ***', 40, y, { align: 'center' });
-    y += 3;
-    doc.text('Se cobrara 5% extra en 30 dias', 40, y, { align: 'center' });
-  } else {
-    doc.text('GRACIAS', 40, y, { align: 'center' });
-  }
-  
-  // Save as PDF
-  doc.save('venta-' + sale.id + '.pdf');
-  
-  // Print based on configuration
-  const printConfig = localStorage.getItem('salesstock_print') || 'ask';
-  if (printConfig === 'auto') {
-    try {
-      doc.autoPrint();
-      window.open(doc.output('bloburl'), '_blank');
-    } catch(e) {
-      setTimeout(() => window.print(), 500);
-    }
-  } else {
-    setTimeout(() => window.print(), 500);
   }
 }
 
@@ -499,6 +372,328 @@ function getStats() {
 
 const fmtMoney = (v) => '$' + v.toFixed(2);
 const fmtDate = (d) => new Date(d).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const PAGE_W = 80;
+const MARGIN_X = 8;
+const INNER_W = PAGE_W - MARGIN_X * 2;
+const FONT = 'helvetica';
+const LINE_COLOR = [180, 180, 180];
+let pdfY = 8;
+function abbreviateText(doc, text, maxWidth) {
+  if (doc.getTextWidth(text) <= maxWidth) return text;
+  let t = text;
+  while (t.length > 0 && doc.getTextWidth(t + '...') > maxWidth) {
+    t = t.slice(0, -1);
+  }
+  return t + '...';
+}
+function pdfLine(doc, x, w, y) {
+  doc.setDrawColor(...LINE_COLOR);
+  doc.setLineWidth(0.4);
+  doc.line(x, y, x + w, y);
+}
+function pdfTitle(doc, text, y) {
+  doc.setFont(FONT, 'bold');
+  doc.setFontSize(13);
+  doc.text(text, PAGE_W / 2, y, { align: 'center' });
+  return y + 5;
+}
+function pdfField(doc, label, value, y) {
+  doc.setFont(FONT, 'bold');
+  doc.setFontSize(9);
+  doc.text(label, MARGIN_X, y, { align: 'left' });
+  doc.setFont(FONT, 'normal');
+  doc.text(value, MARGIN_X + INNER_W * 0.35, y, { align: 'left' });
+  return y + 5;
+}
+function pdfCalcInvoiceHeight(sale) {
+  const bizName = localStorage.getItem('salesstock_bizname') || '';
+  const bizRnc = localStorage.getItem('salesstock_bizrnc') || '';
+  const bizPhone = localStorage.getItem('salesstock_bizphone') || '';
+  const bizAddr = localStorage.getItem('salesstock_bizaddress') || '';
+  const tmp = new jsPDF({ unit: 'mm', format: [80, 1000] });
+  let h = 10;
+  h += 8;
+  if (bizName) h += 4;
+  [bizRnc, bizPhone].forEach(v => { if (v) h += 4; });
+  if (bizAddr) {
+    const lines = tmp.splitTextToSize(bizAddr, INNER_W);
+    h += lines.length * 3.5;
+  }
+  h += 4 + 16 + 4;
+  if (sale.customerName) h += 5;
+  if (sale.customerPhone) h += 5;
+  if (sale.notes) {
+    const lines = tmp.splitTextToSize(sale.notes, INNER_W);
+    h += lines.length * 3.5 + 4;
+  }
+  h += 4 + 16 + 4;
+  sale.items.forEach(() => {
+    h += 7 + 2;
+  });
+  h += 4 + 16 + 4;
+  return h;
+}
+
+function generateQuoteInvoice(quote) {
+  const doc = new jsPDF({ unit: 'mm', format: [PAGE_W, pdfCalcInvoiceHeight(quote)] });
+  let y = MARGIN_X;
+  const bizName = localStorage.getItem('salesstock_bizname') || 'SALESSTOCK PRO';
+  const bizRnc = localStorage.getItem('salesstock_bizrnc') || '';
+  const bizPhone = localStorage.getItem('salesstock_bizphone') || '';
+  const bizAddr = localStorage.getItem('salesstock_bizaddress') || '';
+
+  doc.setFont(FONT, 'bold');
+  doc.setFontSize(15);
+  doc.text(bizName, PAGE_W / 2, y, { align: 'center' });
+  y += 5;
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(9);
+  if (bizRnc) { doc.text('RNC: ' + bizRnc, PAGE_W / 2, y, { align: 'center' }); y += 4; }
+  if (bizPhone) { doc.text('Tel: ' + bizPhone, PAGE_W / 2, y, { align: 'center' }); y += 4; }
+  if (bizAddr) {
+    const lines = doc.splitTextToSize(bizAddr, INNER_W);
+    doc.text(lines, PAGE_W / 2, y, { align: 'center' });
+    y += lines.length * 3.5;
+  }
+  y += 2;
+  pdfLine(doc, MARGIN_X, INNER_W, y);
+  y += 4;
+
+  y = pdfTitle(doc, 'COTIZACIÓN', y);
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(9);
+  doc.text('N° ' + quote.id, PAGE_W / 2, y, { align: 'center' });
+  y += 4;
+  doc.text('Fecha: ' + new Date(quote.created).toLocaleDateString('es-ES'), PAGE_W / 2, y, { align: 'center' });
+  y += 4;
+  doc.text('Vendedor: ' + quote.user, PAGE_W / 2, y, { align: 'center' });
+  y += 4;
+  pdfLine(doc, MARGIN_X, INNER_W, y);
+  y += 4;
+
+  if (quote.customerName || quote.customerPhone) {
+    doc.setFont(FONT, 'bold');
+    doc.setFontSize(9);
+    doc.text('CLIENTE', MARGIN_X, y, { align: 'left' });
+    y += 4;
+    doc.setFont(FONT, 'normal');
+    if (quote.customerName) y = pdfField(doc, 'Nombre:', quote.customerName, y);
+    if (quote.customerPhone) y = pdfField(doc, 'Teléfono:', quote.customerPhone, y);
+    y += 1;
+    pdfLine(doc, MARGIN_X, INNER_W, y);
+    y += 4;
+  }
+
+  if (quote.notes) {
+    doc.setFont(FONT, 'bold');
+    doc.setFontSize(9);
+    doc.text('NOTAS', MARGIN_X, y, { align: 'left' });
+    y += 4;
+    doc.setFont(FONT, 'normal');
+    doc.setFontSize(8);
+    const lines = doc.splitTextToSize(quote.notes, INNER_W);
+    doc.text(lines, MARGIN_X, y, { align: 'left' });
+    y += lines.length * 3.5 + 2;
+    doc.setFontSize(9);
+    pdfLine(doc, MARGIN_X, INNER_W, y);
+    y += 4;
+  }
+
+  doc.setFont(FONT, 'bold');
+  doc.setFontSize(9);
+  const colQty = MARGIN_X;
+  const colDescStart = MARGIN_X + 10;
+  const colUnit = MARGIN_X + INNER_W - 18;
+  const colTotal = MARGIN_X + INNER_W;
+  doc.text('CANT', colQty, y, { align: 'left' });
+  doc.text('DESCRIPCIÓN', colDescStart, y, { align: 'left' });
+  doc.text('P.U.', colUnit, y, { align: 'right' });
+  doc.text('TOTAL', colTotal, y, { align: 'right' });
+  y += 2;
+  pdfLine(doc, MARGIN_X, INNER_W, y);
+  y += 3;
+
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(8);
+  quote.items.forEach(item => {
+    const name = abbreviateText(doc, item.name, INNER_W - 22);
+    const lineH = 7;
+    const pu = '$' + item.price.toFixed(2);
+    const tot = '$' + item.subtotal.toFixed(2);
+    doc.text(String(item.quantity), colQty, y + 1.2, { align: 'left' });
+    doc.text(name, colDescStart, y + 1.2, { align: 'left' });
+    doc.text(pu, colUnit, y + 1.2, { align: 'right' });
+    doc.text(tot, colTotal, y + 1.2, { align: 'right' });
+    y += lineH + 2;
+  });
+
+  y += 1;
+  pdfLine(doc, MARGIN_X, INNER_W, y);
+  y += 4;
+
+  doc.setFont(FONT, 'bold');
+  doc.setFontSize(11);
+  doc.text('TOTAL: ' + fmtMoney(quote.total), colTotal, y, { align: 'right' });
+  y += 5;
+
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(8);
+  doc.text('No es venta - Validez: 7 días', PAGE_W / 2, y, { align: 'center' });
+  y += 4;
+  doc.text('Gracias por su preferencia', PAGE_W / 2, y, { align: 'center' });
+
+  doc.save('cotizacion-' + quote.id + '.pdf');
+  if (printWindow && !printWindow.closed) {
+    try {
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      printWindow.location.href = url;
+      setTimeout(() => {
+        try { printWindow.focus(); printWindow.print(); } catch (e) {}
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }, 300);
+    } catch (e) {
+      setTimeout(() => window.print(), 300);
+    }
+  } else {
+    setTimeout(() => window.print(), 300);
+  }
+}
+
+function generateInvoice(sale) {
+  const doc = new jsPDF({ unit: 'mm', format: [PAGE_W, pdfCalcInvoiceHeight(sale)] });
+  let y = MARGIN_X;
+  const bizName = localStorage.getItem('salesstock_bizname') || 'SALESSTOCK PRO';
+  const bizRnc = localStorage.getItem('salesstock_bizrnc') || '';
+  const bizPhone = localStorage.getItem('salesstock_bizphone') || '';
+  const bizAddr = localStorage.getItem('salesstock_bizaddress') || '';
+
+  doc.setFont(FONT, 'bold');
+  doc.setFontSize(15);
+  doc.text(bizName, PAGE_W / 2, y, { align: 'center' });
+  y += 5;
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(9);
+  if (bizRnc) { doc.text('RNC: ' + bizRnc, PAGE_W / 2, y, { align: 'center' }); y += 4; }
+  if (bizPhone) { doc.text('Tel: ' + bizPhone, PAGE_W / 2, y, { align: 'center' }); y += 4; }
+  if (bizAddr) {
+    const lines = doc.splitTextToSize(bizAddr, INNER_W);
+    doc.text(lines, PAGE_W / 2, y, { align: 'center' });
+    y += lines.length * 3.5;
+  }
+  y += 2;
+  pdfLine(doc, MARGIN_X, INNER_W, y);
+  y += 4;
+
+  y = pdfTitle(doc, 'FACTURA', y);
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(9);
+  doc.text('N° ' + sale.id, PAGE_W / 2, y, { align: 'center' });
+  y += 4;
+  doc.text('Fecha: ' + new Date(sale.created).toLocaleDateString('es-ES') + ' ' + new Date(sale.created).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }), PAGE_W / 2, y, { align: 'center' });
+  y += 4;
+  doc.text('Cajero: ' + sale.user, PAGE_W / 2, y, { align: 'center' });
+  y += 4;
+  pdfLine(doc, MARGIN_X, INNER_W, y);
+  y += 4;
+
+  if (sale.customerName || sale.customerPhone) {
+    doc.setFont(FONT, 'bold');
+    doc.setFontSize(9);
+    doc.text('CLIENTE', MARGIN_X, y, { align: 'left' });
+    y += 4;
+    doc.setFont(FONT, 'normal');
+    if (sale.customerName) y = pdfField(doc, 'Nombre:', sale.customerName, y);
+    if (sale.customerPhone) y = pdfField(doc, 'Teléfono:', sale.customerPhone, y);
+    y += 1;
+    pdfLine(doc, MARGIN_X, INNER_W, y);
+    y += 4;
+  }
+
+  if (sale.notes) {
+    doc.setFont(FONT, 'bold');
+    doc.setFontSize(9);
+    doc.text('NOTAS', MARGIN_X, y, { align: 'left' });
+    y += 4;
+    doc.setFont(FONT, 'normal');
+    doc.setFontSize(8);
+    const lines = doc.splitTextToSize(sale.notes, INNER_W);
+    doc.text(lines, MARGIN_X, y, { align: 'left' });
+    y += lines.length * 3.5 + 2;
+    doc.setFontSize(9);
+    pdfLine(doc, MARGIN_X, INNER_W, y);
+    y += 4;
+  }
+
+  doc.setFont(FONT, 'bold');
+  doc.setFontSize(9);
+  const colQty = MARGIN_X;
+  const colDescStart = MARGIN_X + 10;
+  const colUnit = MARGIN_X + INNER_W - 18;
+  const colTotal = MARGIN_X + INNER_W;
+  doc.text('CANT', colQty, y, { align: 'left' });
+  doc.text('DESCRIPCIÓN', colDescStart, y, { align: 'left' });
+  doc.text('P.U.', colUnit, y, { align: 'right' });
+  doc.text('TOTAL', colTotal, y, { align: 'right' });
+  y += 2;
+  pdfLine(doc, MARGIN_X, INNER_W, y);
+  y += 3;
+
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(8);
+  sale.items.forEach(item => {
+    const name = abbreviateText(doc, item.name, INNER_W - 22);
+    const lineH = 7;
+    const pu = '$' + item.price.toFixed(2);
+    const tot = '$' + item.subtotal.toFixed(2);
+    doc.text(String(item.quantity), colQty, y + 1.2, { align: 'left' });
+    doc.text(name, colDescStart, y + 1.2, { align: 'left' });
+    doc.text(pu, colUnit, y + 1.2, { align: 'right' });
+    doc.text(tot, colTotal, y + 1.2, { align: 'right' });
+    y += lineH + 2;
+  });
+
+  y += 1;
+  pdfLine(doc, MARGIN_X, INNER_W, y);
+  y += 4;
+
+  doc.setFont(FONT, 'bold');
+  doc.setFontSize(11);
+  doc.text('TOTAL: ' + fmtMoney(sale.total), colTotal, y, { align: 'right' });
+  y += 5;
+
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(8);
+  if (sale.paymentType === 'credito') {
+    doc.text('*** PAGO A CRÉDITO ***', PAGE_W / 2, y, { align: 'center' });
+    y += 4;
+    doc.text('Se cobrará 5% extra en 30 días', PAGE_W / 2, y, { align: 'center' });
+  } else {
+    doc.text('¡GRACIAS POR SU COMPRA!', PAGE_W / 2, y, { align: 'center' });
+  }
+  y += 4;
+  pdfLine(doc, MARGIN_X, INNER_W, y);
+  y += 3;
+  doc.text('Documento generado por SalesStock Pro', PAGE_W / 2, y, { align: 'center' });
+
+  doc.save('venta-' + sale.id + '.pdf');
+  if (printWindow && !printWindow.closed) {
+    try {
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      printWindow.location.href = url;
+      setTimeout(() => {
+        try { printWindow.focus(); printWindow.print(); } catch (e) {}
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }, 300);
+    } catch (e) {
+      setTimeout(() => window.print(), 300);
+    }
+  } else {
+    setTimeout(() => window.print(), 300);
+  }
+}
+
 
 function render() {
   const app = document.getElementById('app');
@@ -636,6 +831,7 @@ function renderProducts() {
               <td>
                 <div class="flex gap-2">
                   <button class="btn btn-secondary btn-sm" onclick="showBarcode('${p.barcode}','${p.name}')">📱</button>
+                  <button class="btn btn-primary btn-sm" onclick="state.modal={type:'barcodePrint',product:${JSON.stringify(p).replace(/"/g,'&quot;')}};render()">🏷️</button>
                   <button class="btn btn-secondary btn-sm" onclick="state.modal={type:'product',product:${JSON.stringify(p).replace(/"/g,'&quot;')}};render()">✏️</button>
                   <button class="btn btn-danger btn-sm" onclick="deleteProduct(${p.id});render()">🗑️</button>
                 </div>
@@ -681,8 +877,8 @@ function renderSales() {
           <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span>Total:</span><span style="font-size:22px;font-weight:700;color:#10b981">${fmtMoney(getCartTotal())}</span></div>
           <div style="display:flex;gap:10px">
             <button class="btn btn-danger" style="flex:1;padding:16px;font-size:16px" onclick="cancelCart()">CANCELAR</button>
-            <button class="btn btn-primary" style="flex:1;padding:16px;font-size:16px" onclick="if(state.cart.length){makeQuote()}">COTIZAR</button>
-            <button class="btn btn-success" style="flex:1;padding:16px;font-size:16px" onclick="if(state.cart.length){showPaymentOptions()}">COBRAR</button>
+            <button class="btn btn-primary" style="flex:1;padding:16px;font-size:16px" onclick="if(state.cart.length){showPaymentOptions('quote')}">📄 COTIZAR</button>
+            <button class="btn btn-success" style="flex:1;padding:16px;font-size:16px" onclick="if(state.cart.length){showPaymentOptions('sale')}">💵 COBRAR</button>
           </div>
         </div>
       </div>
@@ -749,39 +945,13 @@ function scanProductBarcode(code) {
       alert('Sin stock: ' + product.name);
     }
   } else {
-    // Abrir modal para agregar producto con código pre-llenado
     state.modal = { type: 'quickAddProduct', barcode: code };
-    render();
   }
   render();
-  setTimeout(function() { 
-    var inp = document.getElementById('scanner-prod'); 
-    if(inp) { inp.value = ''; inp.focus(); } 
+  setTimeout(function() {
+    var inp = document.getElementById('scanner-prod');
+    if(inp) { inp.value = ''; inp.focus(); }
   }, 100);
-}
-  render();
-  setTimeout(function() { var inp = document.getElementById('scanner-input'); if(inp) { inp.value = ''; inp.focus(); } }, 100);
-
-
-function scanProductBarcode(code) {
-  code = code.trim();
-  if (!code) return;
-  const products = DB.get('products');
-  const product = products.find(p => p.barcode === code);
-  if (product) {
-    if (product.stock > 0) {
-      addToCart(product);
-      alert('Agregado: ' + product.name + ' - ' + fmtMoney(product.price));
-    } else {
-      alert('Sin stock: ' + product.name);
-    }
-    render();
-  } else {
-    // Abrir modal para agregar producto con código pre-llenado
-    state.modal = { type: 'quickAddProduct', barcode: code };
-    render();
-  }
-  setTimeout(function() { var inp = document.getElementById('scanner-prod'); if(inp) { inp.value = ''; inp.focus(); } }, 100);
 }
 
 function renderUsers() {
@@ -790,20 +960,20 @@ function renderUsers() {
   return `
     <div class="header"><h1>Usuarios</h1><button class="btn btn-primary" onclick="state.modal={type:'user'};render()">+ Nuevo</button></div>
     
-    <!-- DISPOSITIVOS CONECTADOS - TODO EN UNO SOLO ESPACIO -->
+    <!-- DATOS DE LA EMPRESA - TODO EN UN SOLO ESPACIO -->
     <div class="card" style="margin-bottom:20px">
-      <div class="card-header"><h2 class="card-title">📱 Dispositivos Conectados</h2></div>
+      <div class="card-header"><h2 class="card-title">🏢 Datos de la Empresa</h2></div>
       <div style="padding:20px">
         <table style="width:100%">
           <tr>
             <td style="padding:15px;border-bottom:1px solid #e2e8f0">
               <div style="display:flex;align-items:center;gap:15px">
-                <span style="font-size:24px">🏪</span>
+                <span style="font-size:24px">📛</span>
                 <div style="flex:1">
-                  <strong>Nombre del Negocio</strong>
-                  <p style="color:#64748b;font-size:12px">Este nombre aparece en las facturas</p>
+                  <strong>Nombre de la Empresa</strong>
+                  <p style="color:#64748b;font-size:12px">Aparece en facturas, cotizaciones y reportes</p>
                 </div>
-                <input type="text" id="bizname" value="${localStorage.getItem('salesstock_bizname') || 'SalesStock Pro'}" style="padding:8px;border:1px solid #e2e8f0;border-radius:4px;width:200px" placeholder="Nombre de su negocio">
+                <input type="text" id="bizname" value="${localStorage.getItem('salesstock_bizname') || 'SalesStock Pro'}" style="padding:8px;border:1px solid #e2e8f0;border-radius:4px;width:220px" placeholder="Nombre de la empresa">
                 <button class="btn btn-primary btn-sm" onclick="localStorage.setItem('salesstock_bizname',document.getElementById('bizname').value);render()">Guardar</button>
               </div>
             </td>
@@ -811,51 +981,47 @@ function renderUsers() {
           <tr>
             <td style="padding:15px;border-bottom:1px solid #e2e8f0">
               <div style="display:flex;align-items:center;gap:15px">
-                <span style="font-size:24px">🗨️</span>
+                <span style="font-size:24px">🪪</span>
                 <div style="flex:1">
-                  <strong>Lector de Códigos</strong>
-                  <p style="color:#64748b;font-size:12px">Conecte por USB (modo teclado)</p>
+                  <strong>RNC / NIT</strong>
+                  <p style="color:#64748b;font-size:12px">Registro fiscal de la empresa</p>
                 </div>
-                <button class="btn btn-primary btn-sm" onclick="testScanner()">Probar</button>
+                <input type="text" id="bizrnc" value="${localStorage.getItem('salesstock_bizrnc') || ''}" style="padding:8px;border:1px solid #e2e8f0;border-radius:4px;width:200px" placeholder="000-0000000-0">
+                <button class="btn btn-primary btn-sm" onclick="localStorage.setItem('salesstock_bizrnc',document.getElementById('bizrnc').value);render()">Guardar</button>
               </div>
             </td>
           </tr>
           <tr>
             <td style="padding:15px;border-bottom:1px solid #e2e8f0">
               <div style="display:flex;align-items:center;gap:15px">
-                <span style="font-size:24px">🖨️</span>
+                <span style="font-size:24px">📞</span>
                 <div style="flex:1">
-                  <strong>Impresora</strong>
-                  <p style="color:#64748b;font-size:12px">Modo:</p>
-                  <select onchange="localStorage.setItem('salesstock_print',this.value)" style="padding:5px;border:1px solid #e2e8f0;border-radius:4px">
-                    <option value="ask" ${localStorage.getItem('salesstock_print')!=='auto'?'selected':''}>Preguntar</option>
-                    <option value="auto" ${localStorage.getItem('salesstock_print')==='auto'?'selected':''}>Automático</option>
-                  </select>
+                  <strong>Teléfono de la Empresa</strong>
+                  <p style="color:#64748b;font-size:12px">Contacto principal</p>
                 </div>
-                <button class="btn btn-success btn-sm" onclick="testPrinter()">Probar</button>
+                <input type="text" id="bizphone" value="${localStorage.getItem('salesstock_bizphone') || ''}" style="padding:8px;border:1px solid #e2e8f0;border-radius:4px;width:200px" placeholder="(809) 000-0000">
+                <button class="btn btn-primary btn-sm" onclick="localStorage.setItem('salesstock_bizphone',document.getElementById('bizphone').value);render()">Guardar</button>
               </div>
             </td>
           </tr>
           <tr>
             <td style="padding:15px;border-bottom:1px solid #e2e8f0">
               <div style="display:flex;align-items:center;gap:15px">
-                <span style="font-size:24px">💰</span>
+                <span style="font-size:24px">📍</span>
                 <div style="flex:1">
-                  <strong>Cajón de Dinero</strong>
-                  <p style="color:#64748b;font-size:12px">Conectado a la impresora vía USB</p>
+                  <strong>Dirección</strong>
+                  <p style="color:#64748b;font-size:12px">Dirección física del negocio</p>
                 </div>
-                <label style="display:flex;align-items:center;gap:5px">
-                  <input type="checkbox" ${localStorage.getItem('salesstock_cashdrawer')==='yes'?'checked':''} onchange="localStorage.setItem('salesstock_cashdrawer',this.checked?'yes':'no')">
-                  <span>Activar</span>
-                </label>
-                <button class="btn btn-warning btn-sm" style="color:#fff" onclick="testCashDrawer()">Probar</button>
+                <input type="text" id="bizaddress" value="${localStorage.getItem('salesstock_bizaddress') || ''}" style="padding:8px;border:1px solid #e2e8f0;border-radius:4px;width:300px" placeholder="Calle, ciudad, país">
+                <button class="btn btn-primary btn-sm" onclick="localStorage.setItem('salesstock_bizaddress',document.getElementById('bizaddress').value);render()">Guardar</button>
               </div>
             </td>
           </tr>
           <tr>
             <td style="padding:15px">
               <div style="background:#f8fafc;padding:10px;border-radius:8px">
-                <strong>Estado:</strong> ${state.testResult || '<span style="color:#64748b">Sin pruebas recientes</span>'}
+                <strong>Estado del sistema:</strong> <span style="color:#10b981">Configurado</span>
+                <p style="color:#64748b;font-size:12px;margin-top:4px">Los datos guardados se imprimen automáticamente en facturas y cotizaciones.</p>
               </div>
             </td>
           </tr>
@@ -966,20 +1132,50 @@ function renderModal() {
     html = `
       <div class="modal-overlay" onclick="state.modal=null;render()">
         <div class="modal" onclick="event.stopPropagation()">
-          <div class="modal-header"><h2 class="modal-title">Forma de Pago</h2><button class="btn btn-secondary" onclick="state.modal=null;render()">✕</button></div>
+          <div class="modal-header"><h2 class="modal-title">Datos del Cliente y Facturación</h2><button class="btn btn-secondary" onclick="state.modal=null;render()">✕</button></div>
           <div class="modal-body">
-            <p style="margin-bottom:20px;color:#64748b">Seleccione la forma de pago:</p>
-            <div style="display:flex;flex-direction:column;gap:15px">
-              <button class="btn btn-success" style="padding:20px;font-size:18px" onclick="state.modal=null;completeSale('contado')">
-                💵 Pagar de una vez
-                <div style="font-size:14px;font-weight:normal;margin-top:5px">Total: ${fmtMoney(m.total)}</div>
-              </button>
-              <button class="btn btn-primary" style="padding:20px;font-size:18px" onclick="state.modal=null;completeSale('credito')">
-                📊 Pagar a Crédito
-                <div style="font-size:14px;font-weight:normal;margin-top:5px">Total: ${fmtMoney(m.total * 1.05)} (5% interés)</div>
-              </button>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+              <div class="form-group" style="margin-bottom:0">
+                <label>Nombre del Cliente</label>
+                <input type="text" id="customer-name" class="form-control" placeholder="Nombre completo">
+              </div>
+              <div class="form-group" style="margin-bottom:0">
+                <label>Teléfono del Cliente</label>
+                <input type="text" id="customer-phone" class="form-control" placeholder="(000) 000-0000">
+              </div>
             </div>
-            <p style="margin-top:20px;color:#64748b;font-size:12px">* Crédito: se cobrará 5% extra después de 30 días</p>
+            <div class="form-group" style="margin-bottom:20px">
+              <label>Notas</label>
+              <textarea id="sale-notes" class="form-control" rows="2" placeholder="Información adicional, instrucciones especiales..."></textarea>
+            </div>
+            <div style="background:#f8fafc;padding:16px;border-radius:8px;margin-bottom:20px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <strong>Total del carrito:</strong>
+                <span style="font-size:22px;font-weight:700;color:#10b981">${fmtMoney(m.total)}</span>
+              </div>
+            </div>
+            <p style="margin-bottom:20px;color:#64748b;font-size:12px">
+              ${m.paymentMode === 'sale' ? 'Seleccione la forma de pago:' : 'Generar cotización sin pago:'}
+            </p>
+            <div style="display:flex;flex-direction:column;gap:15px">
+              ${m.paymentMode === 'sale' ? `
+                <button class="btn btn-success" style="padding:20px;font-size:18px" onclick="submitSale('contado')">
+                  💵 Pagar de una vez
+                  <div style="font-size:14px;font-weight:normal;margin-top:5px">Total: ${fmtMoney(m.total)}</div>
+                </button>
+                <button class="btn btn-primary" style="padding:20px;font-size:18px" onclick="submitSale('credito')">
+                  📊 Pagar a Crédito
+                  <div style="font-size:14px;font-weight:normal;margin-top:5px">Total: ${fmtMoney(m.total * 1.05)} (5% interés)</div>
+                </button>
+              ` : ''}
+              ${m.paymentMode === 'quote' ? `
+                <button class="btn btn-secondary" style="padding:20px;font-size:18px" onclick="submitQuote()">
+                  📄 Generar Cotización
+                  <div style="font-size:13px;font-weight:normal;margin-top:5px">Guardar como borrador sin pago</div>
+                </button>
+              ` : ''}
+            </div>
+            ${m.paymentMode === 'sale' ? '<p style="margin-top:20px;color:#64748b;font-size:12px">* Crédito: se cobrará 5% extra después de 30 días</p>' : ''}
           </div>
         </div>
       </div>
@@ -1006,6 +1202,28 @@ function renderModal() {
             </div>
             <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="state.modal=null;render()">Cancelar</button><button type="submit" class="btn btn-primary">Agregar</button></div>
           </form>
+        </div>
+      </div>
+    `;
+  } else if (m.type === 'barcodePrint') {
+    const p = m.product || {};
+    html = `
+      <div class="modal-overlay" onclick="state.modal=null;render()">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width:400px">
+          <div class="modal-header"><h2 class="modal-title">Imprimir Etiqueta</h2><button class="btn btn-secondary" onclick="state.modal=null;render()">✕</button></div>
+          <div class="modal-body" style="text-align:center">
+            <h3 style="margin-bottom:16px">${p.name}</h3>
+            <p style="margin-bottom:20px;color:#64748b">Codigo: <strong>${p.barcode || '-'}</strong></p>
+            <div class="form-group" style="text-align:left">
+              <label>Cantidad de etiquetas</label>
+              <input id="label-qty" class="form-control" type="number" min="1" max="500" value="1" style="font-size:18px;text-align:center;font-weight:600">
+            </div>
+            <p style="color:#64748b;font-size:12px">Formato: 60 x 25 mm</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="state.modal=null;render()">Cancelar</button>
+            <button type="button" class="btn btn-success" onclick="printSingleLabel(state.modal.product, parseInt(document.getElementById('label-qty').value))">🖨️ Imprimir</button>
+          </div>
         </div>
       </div>
     `;
@@ -1075,10 +1293,89 @@ function exportPDF() {
   doc.save('reporte-' + new Date().toISOString().split('T')[0] + '.pdf');
 }
 
+function printBarcodeLabels() {
+  const products = DB.get('products');
+  generateLabelPDF(products);
+}
+
+function printSingleLabel(product, quantity) {
+  if (!quantity || quantity < 1) quantity = 1;
+  const list = [];
+  for (let i = 0; i < quantity; i++) list.push(product);
+  generateLabelPDF(list);
+}
+
+function generateLabelPDF(products) {
+  if (!products.length) { alert('No hay productos para imprimir'); return; }
+
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const labelW = 60;
+  const labelH = 25;
+  const marginX = 12;
+  const marginY = 12;
+  const gapX = 6;
+  const gapY = 4;
+  const cols = 3;
+  const rowsPerPage = Math.floor((297 - marginY * 2 + gapY) / (labelH + gapY));
+
+  let col = 0, row = 0;
+  products.forEach((p) => {
+    if (row >= rowsPerPage) {
+      doc.addPage();
+      row = 0;
+      col = 0;
+    }
+
+    const x = marginX + col * (labelW + gapX);
+    const y = marginY + row * (labelH + gapY);
+
+    doc.setDrawColor(180);
+    doc.rect(x, y, labelW, labelH);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 300;
+    canvas.height = 80;
+    try {
+      JsBarcode(canvas, p.barcode || ('S' + p.id), {
+        format: 'CODE128',
+        width: 2,
+        height: 40,
+        displayValue: true,
+        fontSize: 12,
+        margin: 0
+      });
+      const imgData = canvas.toDataURL('image/png');
+      doc.addImage(imgData, 'PNG', x + 2, y + 2, labelW - 4, 12);
+    } catch (e) {
+      doc.setFontSize(8);
+      doc.text(p.barcode || 'N/A', x + 4, y + 6);
+    }
+
+    const name = p.name.length > 22 ? p.name.substring(0, 20) + '..' : p.name;
+    const nameW = doc.getTextWidth(name);
+    doc.text(name, x + (labelW - nameW) / 2, y + 17);
+
+    const price = '$' + p.price.toFixed(2);
+    const priceW = doc.getTextWidth(price);
+    doc.text(price, x + (labelW - priceW) / 2, y + 23);
+
+    col++;
+    if (col >= cols) {
+      col = 0;
+      row++;
+    }
+  });
+
+  doc.save('etiquetas.pdf');
+}
+
 // Exponer al window para que el HTML pueda acceder
 window.state = state;
 window.logout = logout;
 window.isDirty = false;
+window.showPaymentOptions = showPaymentOptions;
+window.submitSale = submitSale;
+window.submitQuote = submitQuote;
 
 // Marcar changes cuando el carrito cambia
 const originalAddToCart = addToCart;
@@ -1105,17 +1402,17 @@ cancelCart = function() {
   window.isDirty = false;
 };
 
-const originalCompleteSale = completeSale;
-completeSale = function(paymentType) {
-  originalCompleteSale(paymentType);
-  window.isDirty = false;
-};
+  const originalCompleteSale = completeSale;
+  completeSale = function(paymentType, customerData) {
+    originalCompleteSale(paymentType, customerData);
+    window.isDirty = false;
+  };
 
-const originalMakeQuote = makeQuote;
-makeQuote = function() {
-  originalMakeQuote();
-  window.isDirty = false;
-};
+  const originalMakeQuote = makeQuote;
+  makeQuote = function(customerData) {
+    originalMakeQuote(customerData);
+    window.isDirty = false;
+  };
 
 const originalLogout = logout;
 logout = function() {

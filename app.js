@@ -28,7 +28,9 @@ let state = {
   modal: null,
   alertDismissed: false,
   testResult: '',
-  loginError: ''
+  loginError: '',
+  previewInvoiceHtml: '',
+  salesListHtml: ''
 };
 
 function login(username, password) {
@@ -151,9 +153,14 @@ function cancelCart() {
 }
 
 function showPaymentOptions(mode) {
-  const total = getCartTotal();
+  const subtotal = getCartTotal();
+  const itbis = subtotal * ITBIS_RATE;
+  const interest = mode === 'sale' ? subtotal * 0.05 : 0;
+  const total = subtotal + itbis + interest;
   state.modal = {
     type: 'payment',
+    subtotal: subtotal,
+    itbis: itbis,
     total: total,
     paymentMode: mode || 'sale'
   };
@@ -184,15 +191,17 @@ function completeSale(paymentType, customerData) {
   if (state.cart.length === 0) return;
   const modoPago = paymentType || 'contado';
   const isCredit = modoPago === 'credito';
-  const total = getCartTotal();
-  const interest = isCredit ? total * 0.05 : 0;
-  const finalTotal = total + interest;
-  
+  const subtotal = getCartTotal();
+  const itbis = subtotal * ITBIS_RATE;
+  const interest = isCredit ? subtotal * 0.05 : 0;
+  const finalTotal = subtotal + itbis + interest;
+
   const sale = {
     id: Date.now(),
     items: state.cart.map(i => ({ id: i.id, name: i.name, barcode: i.barcode, quantity: i.quantity, price: i.price, subtotal: i.price * i.quantity })),
     total: finalTotal,
-    subtotal: total,
+    subtotal: subtotal,
+    itbis: itbis,
     interest: interest,
     paymentType: modoPago,
     user: state.user.username,
@@ -372,6 +381,7 @@ function getStats() {
 
 const fmtMoney = (v) => '$' + v.toFixed(2);
 const fmtDate = (d) => new Date(d).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const ITBIS_RATE = 0.18;
 const PAGE_W = 80;
 const MARGIN_X = 8;
 const INNER_W = PAGE_W - MARGIN_X * 2;
@@ -409,12 +419,13 @@ function pdfCalcInvoiceHeight(sale) {
   const bizName = localStorage.getItem('salesstock_bizname') || '';
   const bizRnc = localStorage.getItem('salesstock_bizrnc') || '';
   const bizPhone = localStorage.getItem('salesstock_bizphone') || '';
+  const bizEmail = localStorage.getItem('salesstock_bizemail') || '';
   const bizAddr = localStorage.getItem('salesstock_bizaddress') || '';
   const tmp = new jsPDF({ unit: 'mm', format: [80, 1000] });
   let h = 10;
   h += 8;
   if (bizName) h += 4;
-  [bizRnc, bizPhone].forEach(v => { if (v) h += 4; });
+  [bizRnc, bizPhone, bizEmail].forEach(v => { if (v) h += 4; });
   if (bizAddr) {
     const lines = tmp.splitTextToSize(bizAddr, INNER_W);
     h += lines.length * 3.5;
@@ -430,7 +441,7 @@ function pdfCalcInvoiceHeight(sale) {
   sale.items.forEach(() => {
     h += 7 + 2;
   });
-  h += 4 + 16 + 4;
+  h += 4 + 20 + 4;
   return h;
 }
 
@@ -440,6 +451,7 @@ function generateQuoteInvoice(quote) {
   const bizName = localStorage.getItem('salesstock_bizname') || 'SALESSTOCK PRO';
   const bizRnc = localStorage.getItem('salesstock_bizrnc') || '';
   const bizPhone = localStorage.getItem('salesstock_bizphone') || '';
+  const bizEmail = localStorage.getItem('salesstock_bizemail') || '';
   const bizAddr = localStorage.getItem('salesstock_bizaddress') || '';
 
   doc.setFont(FONT, 'bold');
@@ -450,6 +462,7 @@ function generateQuoteInvoice(quote) {
   doc.setFontSize(9);
   if (bizRnc) { doc.text('RNC: ' + bizRnc, PAGE_W / 2, y, { align: 'center' }); y += 4; }
   if (bizPhone) { doc.text('Tel: ' + bizPhone, PAGE_W / 2, y, { align: 'center' }); y += 4; }
+  if (bizEmail) { doc.text('Email: ' + bizEmail, PAGE_W / 2, y, { align: 'center' }); y += 4; }
   if (bizAddr) {
     const lines = doc.splitTextToSize(bizAddr, INNER_W);
     doc.text(lines, PAGE_W / 2, y, { align: 'center' });
@@ -462,7 +475,7 @@ function generateQuoteInvoice(quote) {
   y = pdfTitle(doc, 'COTIZACIÓN', y);
   doc.setFont(FONT, 'normal');
   doc.setFontSize(9);
-  doc.text('N° ' + quote.id, PAGE_W / 2, y, { align: 'center' });
+  doc.text('N° ' + (quote.customerName ? quote.customerName : quote.id), PAGE_W / 2, y, { align: 'center' });
   y += 4;
   doc.text('Fecha: ' + new Date(quote.created).toLocaleDateString('es-ES'), PAGE_W / 2, y, { align: 'center' });
   y += 4;
@@ -566,6 +579,7 @@ function generateInvoice(sale) {
   const bizName = localStorage.getItem('salesstock_bizname') || 'SALESSTOCK PRO';
   const bizRnc = localStorage.getItem('salesstock_bizrnc') || '';
   const bizPhone = localStorage.getItem('salesstock_bizphone') || '';
+  const bizEmail = localStorage.getItem('salesstock_bizemail') || '';
   const bizAddr = localStorage.getItem('salesstock_bizaddress') || '';
 
   doc.setFont(FONT, 'bold');
@@ -576,6 +590,7 @@ function generateInvoice(sale) {
   doc.setFontSize(9);
   if (bizRnc) { doc.text('RNC: ' + bizRnc, PAGE_W / 2, y, { align: 'center' }); y += 4; }
   if (bizPhone) { doc.text('Tel: ' + bizPhone, PAGE_W / 2, y, { align: 'center' }); y += 4; }
+  if (bizEmail) { doc.text('Email: ' + bizEmail, PAGE_W / 2, y, { align: 'center' }); y += 4; }
   if (bizAddr) {
     const lines = doc.splitTextToSize(bizAddr, INNER_W);
     doc.text(lines, PAGE_W / 2, y, { align: 'center' });
@@ -588,7 +603,7 @@ function generateInvoice(sale) {
   y = pdfTitle(doc, 'FACTURA', y);
   doc.setFont(FONT, 'normal');
   doc.setFontSize(9);
-  doc.text('N° ' + sale.id, PAGE_W / 2, y, { align: 'center' });
+  doc.text('N° ' + (sale.customerName ? sale.customerName : sale.id), PAGE_W / 2, y, { align: 'center' });
   y += 4;
   doc.text('Fecha: ' + new Date(sale.created).toLocaleDateString('es-ES') + ' ' + new Date(sale.created).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }), PAGE_W / 2, y, { align: 'center' });
   y += 4;
@@ -657,8 +672,18 @@ function generateInvoice(sale) {
   pdfLine(doc, MARGIN_X, INNER_W, y);
   y += 4;
 
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(10);
+  doc.text('Subtotal: ' + fmtMoney(sale.subtotal), colTotal, y, { align: 'right' });
+  y += 4;
+  doc.text('ITBIS (18%): ' + fmtMoney(sale.itbis), colTotal, y, { align: 'right' });
+  y += 4;
+  if (sale.paymentType === 'credito') {
+    doc.text('Interés (5%): ' + fmtMoney(sale.interest), colTotal, y, { align: 'right' });
+    y += 4;
+  }
   doc.setFont(FONT, 'bold');
-  doc.setFontSize(11);
+  doc.setFontSize(12);
   doc.text('TOTAL: ' + fmtMoney(sale.total), colTotal, y, { align: 'right' });
   y += 5;
 
@@ -784,7 +809,7 @@ function renderPage() {
   }
 }
 
-function renderDashboard() {
+  function renderDashboard() {
   const stats = getStats();
   const recent = getSales().slice(-10).reverse();
   return `
@@ -796,9 +821,163 @@ function renderDashboard() {
     </div>
     <div class="grid-2">
       <div class="card">
-        <div class="card-header"><h2 class="card-title">Últimas Ventas</h2><a class="btn btn-secondary btn-sm" href="#sales">Ver todas</a></div>
-        ${recent.length ? `<table><thead><tr><th>ID</th><th>Fecha</th><th>Total</th><th>Usuario</th><th></th></tr></thead><tbody>${recent.slice(0,5).map(s=>`<tr><td>#${s.id}</td><td>${fmtDate(s.created)}</td><td class="text-success">${fmtMoney(s.total)}</td><td>${s.user}</td><td><button class="btn btn-danger btn-sm" onclick="promptDeleteSale(${s.id})">🗑️</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">No hay ventas recientes</div>'}
+        <div class="card-header"><h2 class="card-title">Últimas Ventas</h2><button class="btn btn-secondary btn-sm" onclick="showAllSalesModal()">Ver todas</button></div>
+        ${recent.length ? `<table><thead><tr><th>Cliente / ID</th><th>Fecha</th><th>Total</th><th>Usuario</th><th></th></tr></thead><tbody>${recent.slice(0,5).map(s=>`<tr><td><strong>${s.customerName ? s.customerName : '#'+s.id}</strong></td><td>${fmtDate(s.created)}</td><td class="text-success" style="font-weight:600">${fmtMoney(s.total)}</td><td>${s.user}</td><td><button class="btn btn-info btn-sm" onclick="previewSaleInvoice(${s.id})" title="Ver factura">👁️</button> <button class="btn btn-danger btn-sm" onclick="promptDeleteSale(${s.id})">🗑️</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">No hay ventas recientes</div>'}
       </div>
+    </div>
+    ${state.previewInvoiceHtml ? `<div class="invoice-preview-overlay" onclick="state.previewInvoiceHtml='';render()"><div class="invoice-preview-modal" onclick="event.stopPropagation()"><div class="invoice-preview-header"><h2>Previsualización de Factura</h2><button class="btn btn-secondary" onclick="state.previewInvoiceHtml='';render()">✕</button></div><div class="invoice-preview-body">${state.previewInvoiceHtml}</div><div class="invoice-preview-footer"><button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir</button></div></div></div>` : ''}
+    ${state.salesListHtml ? `<div class="sales-list-overlay" onclick="state.salesListHtml='';render()"><div class="sales-list-modal" onclick="event.stopPropagation()"><div class="sales-list-header"><h2>Todas las Facturas</h2><button class="btn btn-secondary" onclick="state.salesListHtml='';render()">✕</button></div><div class="sales-list-body">${state.salesListHtml}</div></div></div>` : ''}
+  `;
+}
+
+function previewSaleInvoice(saleId) {
+  try {
+    const sale = getSales().find(s => s.id === saleId);
+    if (!sale) {
+      alert('Venta no encontrada');
+      return;
+    }
+    state.previewInvoiceHtml = renderSaleInvoiceHtml(sale);
+    render();
+  } catch (e) {
+    alert('Error al cargar la previsualización: ' + e.message);
+    console.error(e);
+  }
+}
+
+function showAllSalesModal() {
+  state.salesListHtml = buildSalesListHtml(getSales());
+  render();
+}
+
+function buildSalesListHtml(sales) {
+  const rows = sales.map(s => `
+    <tr>
+      <td><strong>${s.customerName ? s.customerName : '#'+s.id}</strong></td>
+      <td>${fmtDate(s.created)}</td>
+      <td>${fmtMoney(s.subtotal || 0)}</td>
+      <td>${fmtMoney(s.itbis || 0)}</td>
+      <td class="text-success" style="font-weight:600">${fmtMoney(s.total)}</td>
+      <td>${s.user}</td>
+      <td>
+        <button class="btn btn-info btn-sm" onclick="previewSaleInvoice(${s.id}); state.salesListHtml=''; render();" title="Ver factura">👁️</button>
+        <button class="btn btn-danger btn-sm" onclick="if(confirm('¿Eliminar venta #${s.id}?')){promptDeleteSale(${s.id}); state.salesListHtml=''; render();}">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+
+  return `
+    <div style="margin-bottom:16px">
+      <input type="text" class="form-control" id="sales-search" placeholder="Buscar por cliente, usuario o ID..." oninput="filterSalesTable(this.value)" />
+    </div>
+    <div style="overflow-x:auto">
+      <table id="sales-table">
+        <thead>
+          <tr>
+            <th>Cliente / ID</th>
+            <th>Fecha</th>
+            <th>Subtotal</th>
+            <th>ITBIS</th>
+            <th>Total</th>
+            <th>Usuario</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <script>
+      function filterSalesTable(query) {
+        const q = query.toLowerCase();
+        const rows = document.querySelectorAll('#sales-table tbody tr');
+        rows.forEach(row => {
+          const text = row.innerText.toLowerCase();
+          row.style.display = text.includes(q) ? '' : 'none';
+        });
+      }
+    <\/script>
+  `;
+}
+
+function renderSaleInvoiceHtml(sale) {
+  const bizName = localStorage.getItem('salesstock_bizname') || 'SALESSTOCK PRO';
+  const bizRnc = localStorage.getItem('salesstock_bizrnc') || '';
+  const bizPhone = localStorage.getItem('salesstock_bizphone') || '';
+  const bizEmail = localStorage.getItem('salesstock_bizemail') || '';
+  const bizAddr = localStorage.getItem('salesstock_bizaddress') || '';
+
+  const itemsHtml = sale.items.map(item => `
+    <tr>
+      <td>${item.quantity}</td>
+      <td>${item.name}</td>
+      <td>${fmtMoney(item.price)}</td>
+      <td>${fmtMoney(item.subtotal)}</td>
+    </tr>
+  `).join('');
+
+  const clientHtml = (sale.customerName || sale.customerPhone) ? `
+    <div class="inv-section">
+      <h3>Cliente</h3>
+      <div><strong>Nombre:</strong> ${sale.customerName || '-'}</div>
+      <div><strong>Teléfono:</strong> ${sale.customerPhone || '-'}</div>
+    </div>
+  ` : '';
+
+  const notesHtml = sale.notes ? `
+    <div class="inv-section">
+      <h3>Notas</h3>
+      <div>${sale.notes}</div>
+    </div>
+  ` : '';
+
+  const creditHtml = sale.paymentType === 'credito' ? `
+    <div class="inv-section">
+      <div><strong>Interés (5%):</strong> ${fmtMoney(sale.interest)}</div>
+    </div>
+  ` : '';
+
+  const itbisHtml = sale.itbis ? `
+    <div class="inv-section">
+      <div><strong>Subtotal:</strong> ${fmtMoney(sale.subtotal)}</div>
+      <div><strong>ITBIS (18%):</strong> ${fmtMoney(sale.itbis)}</div>
+    </div>
+  ` : '';
+
+  return `
+    <div class="inv-header">
+      <h1>${bizName}</h1>
+      <div>${bizRnc ? 'RNC: ' + bizRnc + '<br>' : ''}${bizPhone ? 'Tel: ' + bizPhone + '<br>' : ''}${bizEmail ? 'Email: ' + bizEmail + '<br>' : ''}${bizAddr ? 'Dir: ' + bizAddr : ''}</div>
+    </div>
+    <div class="inv-meta">
+      <div><strong>Factura N°:</strong> ${sale.customerName ? sale.customerName : sale.id}</div>
+      <div><strong>Fecha:</strong> ${new Date(sale.created).toLocaleDateString('es-ES')} ${new Date(sale.created).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</div>
+      <div><strong>Cajero:</strong> ${sale.user}</div>
+      <div><strong>Pago:</strong> ${sale.paymentType === 'credito' ? 'Crédito' : 'Contado'}</div>
+    </div>
+    <hr />
+    ${clientHtml}
+    ${notesHtml}
+    <div class="inv-section">
+      <h3>Productos</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Cant</th>
+            <th>Producto</th>
+            <th>P.U.</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsHtml}
+        </tbody>
+      </table>
+    </div>
+    ${itbisHtml}
+    ${creditHtml}
+    <div class="inv-total">TOTAL: ${fmtMoney(sale.total)}</div>
+    <div class="inv-footer">
+      ${sale.paymentType === 'credito' ? '*** PAGO A CRÉDITO ***<br>Se cobrará 5% extra en 30 días' : '¡GRACIAS POR SU COMPRA!'}
     </div>
   `;
 }
@@ -1007,6 +1186,19 @@ function renderUsers() {
           <tr>
             <td style="padding:15px;border-bottom:1px solid #e2e8f0">
               <div style="display:flex;align-items:center;gap:15px">
+                <span style="font-size:24px">📧</span>
+                <div style="flex:1">
+                  <strong>Email de la Empresa</strong>
+                  <p style="color:#64748b;font-size:12px">Correo electrónico de contacto</p>
+                </div>
+                <input type="text" id="bizemail" value="${localStorage.getItem('salesstock_bizemail') || ''}" style="padding:8px;border:1px solid #e2e8f0;border-radius:4px;width:240px" placeholder="contacto@empresa.com">
+                <button class="btn btn-primary btn-sm" onclick="localStorage.setItem('salesstock_bizemail',document.getElementById('bizemail').value);render()">Guardar</button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:15px;border-bottom:1px solid #e2e8f0">
+              <div style="display:flex;align-items:center;gap:15px">
                 <span style="font-size:24px">📍</span>
                 <div style="flex:1">
                   <strong>Dirección</strong>
@@ -1066,7 +1258,7 @@ function renderReports() {
     </div>
     <div class="card">
       <div class="card-header"><h2 class="card-title">Detalle - ${new Date(today).toLocaleDateString('es-ES')}</h2></div>
-      ${sales.length ? `<table><thead><tr><th>ID</th><th>Hora</th><th>Productos</th><th>Total</th><th></th></tr></thead><tbody>${sales.map(s=>`<tr><td>#${s.id}</td><td>${new Date(s.created).toLocaleTimeString('es-ES')}</td><td>${s.items.map(i=>i.name).join(', ')}</td><td class="text-success" style="font-weight:600">${fmtMoney(s.total)}</td><td><button class="btn btn-danger btn-sm" onclick="promptDeleteSale(${s.id})">🗑️</button></td></tr>`).join('')}</tbody><tfoot><tr style="background:#f8fafc"><td colspan="2" style="text-align:right;font-weight:600">TOTAL:</td><td class="text-success" style="font-weight:700;font-size:16px">${fmtMoney(total)}</td><td></td></tr></tfoot></table>` : '<div class="empty">No hay ventas hoy</div>'}
+      ${sales.length ? `<table><thead><tr><th>Cliente / ID</th><th>Hora</th><th>Productos</th><th>Total</th><th></th></tr></thead><tbody>${sales.map(s=>`<tr><td><strong>${s.customerName ? s.customerName : '#'+s.id}</strong></td><td>${new Date(s.created).toLocaleTimeString('es-ES')}</td><td>${s.items.map(i=>i.name).join(', ')}</td><td class="text-success" style="font-weight:600">${fmtMoney(s.total)}</td><td><button class="btn btn-danger btn-sm" onclick="promptDeleteSale(${s.id})">🗑️</button></td></tr>`).join('')}</tbody><tfoot><tr style="background:#f8fafc"><td colspan="3" style="text-align:right;font-weight:600">TOTAL:</td><td class="text-success" style="font-weight:700;font-size:16px">${fmtMoney(total)}</td><td></td></tr></tfoot></table>` : '<div class="empty">No hay ventas hoy</div>'}
     </div>
   `;
 }
@@ -1149,9 +1341,25 @@ function renderModal() {
               <textarea id="sale-notes" class="form-control" rows="2" placeholder="Información adicional, instrucciones especiales..."></textarea>
             </div>
             <div style="background:#f8fafc;padding:16px;border-radius:8px;margin-bottom:20px">
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <strong>Total del carrito:</strong>
-                <span style="font-size:22px;font-weight:700;color:#10b981">${fmtMoney(m.total)}</span>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;justify-content:space-between">
+                  <span>Subtotal:</span>
+                  <span>${fmtMoney(m.subtotal)}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between">
+                  <span>ITBIS (18%):</span>
+                  <span>${fmtMoney(m.itbis)}</span>
+                </div>
+                ${m.paymentMode === 'sale' ? `
+                <div style="display:flex;justify-content:space-between">
+                  <span>Interés (5%) Crédito:</span>
+                  <span>${fmtMoney(m.total - m.subtotal - m.itbis)}</span>
+                </div>
+                ` : ''}
+                <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:700;color:#10b981;border-top:1px solid #e2e8f0;padding-top:8px;margin-top:4px">
+                  <span>Total:</span>
+                  <span>${fmtMoney(m.total)}</span>
+                </div>
               </div>
             </div>
             <p style="margin-bottom:20px;color:#64748b;font-size:12px">
@@ -1159,13 +1367,13 @@ function renderModal() {
             </p>
             <div style="display:flex;flex-direction:column;gap:15px">
               ${m.paymentMode === 'sale' ? `
-                <button class="btn btn-success" style="padding:20px;font-size:18px" onclick="submitSale('contado')">
+                 <button class="btn btn-success" style="padding:20px;font-size:18px" onclick="submitSale('contado')">
                   💵 Pagar de una vez
                   <div style="font-size:14px;font-weight:normal;margin-top:5px">Total: ${fmtMoney(m.total)}</div>
                 </button>
                 <button class="btn btn-primary" style="padding:20px;font-size:18px" onclick="submitSale('credito')">
                   📊 Pagar a Crédito
-                  <div style="font-size:14px;font-weight:normal;margin-top:5px">Total: ${fmtMoney(m.total * 1.05)} (5% interés)</div>
+                  <div style="font-size:14px;font-weight:normal;margin-top:5px">Total: ${fmtMoney(m.total)} (5% interés incluido)</div>
                 </button>
               ` : ''}
               ${m.paymentMode === 'quote' ? `
@@ -1274,17 +1482,17 @@ function exportPDF() {
   doc.text('Detalle de Ventas', 20, 102);
   let y = 115;
   doc.setFontSize(9);
-  doc.text('ID', 20, y);
-  doc.text('Hora', 45, y);
-  doc.text('Productos', 75, y);
-  doc.text('Total', 160, y);
+  doc.text('Cliente / ID', 20, y);
+  doc.text('Hora', 70, y);
+  doc.text('Productos', 100, y);
+  doc.text('Total', 175, y);
   y += 6;
   sales.forEach(s => {
     const prods = s.items.map(i => i.name + '(' + i.quantity + ')').join(', ').substring(0, 40);
-    doc.text('#' + s.id, 20, y);
-    doc.text(new Date(s.created).toLocaleTimeString('es-ES'), 45, y);
-    doc.text(prods, 75, y);
-    doc.text('$' + s.total.toFixed(2), 160, y);
+    doc.text(s.customerName || ('#' + s.id), 20, y);
+    doc.text(new Date(s.created).toLocaleTimeString('es-ES'), 70, y);
+    doc.text(prods, 100, y);
+    doc.text('$' + s.total.toFixed(2), 175, y);
     y += 6;
   });
   y += 10;
@@ -1376,6 +1584,8 @@ window.isDirty = false;
 window.showPaymentOptions = showPaymentOptions;
 window.submitSale = submitSale;
 window.submitQuote = submitQuote;
+window.previewSaleInvoice = previewSaleInvoice;
+window.showAllSalesModal = showAllSalesModal;
 
 // Marcar changes cuando el carrito cambia
 const originalAddToCart = addToCart;

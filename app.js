@@ -5,14 +5,8 @@ const DB = {
   set(key, data) { localStorage.setItem('salesstock_' + key, JSON.stringify(data)); },
   init() {
     if (!localStorage.getItem('salesstock_initialized')) {
-      this.set('users', [{ id: 1, username: 'admin', password: 'admin123', role: 'ADMIN', created: new Date().toISOString() }]);
-      this.set('products', [
-        { id: 1, name: 'Taladro Inalámbrico', price: 89.99, stock: 15, minStock: 5, barcode: 'S1700000001', created: new Date().toISOString() },
-        { id: 2, name: 'Destornillador Phillips', price: 12.50, stock: 50, minStock: 10, barcode: 'S1700000002', created: new Date().toISOString() },
-        { id: 3, name: 'Sierra Circular', price: 145.00, stock: 3, minStock: 5, barcode: 'S1700000003', created: new Date().toISOString() },
-        { id: 4, name: 'Martillo de Guerra', price: 25.00, stock: 20, minStock: 8, barcode: 'S1700000004', created: new Date().toISOString() },
-        { id: 5, name: 'Alicate Universal', price: 18.75, stock: 8, minStock: 10, barcode: 'S1700000005', created: new Date().toISOString() }
-      ]);
+      this.set('users', [{ id: 1, username: 'Sistemapro', password: 'Sistemapro1532', role: 'ADMIN', created: new Date().toISOString() }]);
+      this.set('products', []);
       this.set('sales', []);
       this.set('fiados', []);
       localStorage.setItem('salesstock_initialized', 'true');
@@ -112,7 +106,7 @@ function getTodaySales() {
 
 function verifyPassword(pw) {
   if (!pw) return false;
-  if (pw === 'admin123') return true;
+  if (pw === 'Sistemapro1532') return true;
   if (state.user && state.user.password && pw === state.user.password) return true;
   return false;
 }
@@ -373,24 +367,7 @@ function testScanner() {
   const timeout = setTimeout(() => {
     if (!scanned) {
       state.testResult = '<div style="color:#ef4444">❌ Lector no detectado. Verifique que esté conectado como teclado USB</div>';
-function migrateFiados() {
-  if (localStorage.getItem('salesstock_migrated_fiados_v2')) return;
-  const fiados = DB.get('fiados');
-  if (fiados.length) {
-    fiados.forEach(f => {
-      f.total = roundPeso(f.total);
-      f.paid = roundPeso(f.paid || 0);
-      f.balance = roundPeso(f.total - f.paid);
-      if (f.balance <= 0) { f.balance = 0; f.status = 'paid'; }
-      else { f.status = 'pending'; }
-    });
-    DB.set('fiados', fiados);
-  }
-  localStorage.setItem('salesstock_migrated_fiados_v2', 'true');
-}
-migrateFiados();
-
-render();
+      render();
     }
   }, 10000);
   const handler = (e) => {
@@ -2276,5 +2253,46 @@ window.addEventListener('beforeunload', (e) => {
     return 'Tienes productos en el carrito. ¿Seguro que quieres salir?';
   }
 });
+
+function migrateFiados() {
+  if (localStorage.getItem('salesstock_migrated_fiados_v2')) return;
+  const fiados = DB.get('fiados');
+  if (fiados.length) {
+    fiados.forEach(f => {
+      f.total = roundPeso(f.total);
+      f.paid = roundPeso(f.paid || 0);
+      f.balance = roundPeso(f.total - f.paid);
+      if (f.balance <= 0) { f.balance = 0; f.status = 'paid'; }
+      else { f.status = 'pending'; }
+    });
+    DB.set('fiados', fiados);
+  }
+  localStorage.setItem('salesstock_migrated_fiados_v2', 'true');
+}
+function migrateClearSeedProducts() {
+  if (localStorage.getItem('salesstock_cleared_seed_products')) return;
+  const seedBarcodes = ['S1700000001','S1700000002','S1700000003','S1700000004','S1700000005'];
+  const products = DB.get('products');
+  const filtered = products.filter(p => !seedBarcodes.includes(p.barcode));
+  if (filtered.length !== products.length) DB.set('products', filtered);
+  localStorage.setItem('salesstock_cleared_seed_products', 'true');
+}
+function migrateDefaultAdmin() {
+  if (localStorage.getItem('salesstock_migrated_admin_v1')) return;
+  const users = DB.get('users');
+  let changed = false;
+  users.forEach(u => {
+    if (u.username === 'admin' && u.password === 'admin123') {
+      u.username = 'Sistemapro';
+      u.password = 'Sistemapro1532';
+      changed = true;
+    }
+  });
+  if (changed) DB.set('users', users);
+  localStorage.setItem('salesstock_migrated_admin_v1', 'true');
+}
+migrateClearSeedProducts();
+migrateDefaultAdmin();
+migrateFiados();
 
 render();
